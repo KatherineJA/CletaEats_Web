@@ -6,6 +6,7 @@ const navItems = [
   { to: '/admin',              label: 'Dashboard',    icon: 'ti-layout-dashboard', end: true },
   { to: '/admin/clientes',     label: 'Clientes',     icon: 'ti-users' },
   { to: '/admin/repartidores', label: 'Repartidores', icon: 'ti-motorbike' },
+  { to: '/admin/encargados',   label: 'Encargados',   icon: 'ti-user-plus' },
   { to: '/admin/restaurantes', label: 'Restaurantes', icon: 'ti-building-store' },
   { to: '/admin/pedidos',      label: 'Pedidos',      icon: 'ti-receipt' },
   { to: '/admin/reportes',     label: 'Reportes',     icon: 'ti-chart-bar' },
