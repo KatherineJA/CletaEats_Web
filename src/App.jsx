@@ -4,6 +4,7 @@ import AdminLayout from './layouts/AdminLayout';
 import Dashboard from './pages/admin/Dashboard';
 import Clientes from './pages/admin/Clientes';
 import Repartidores from './pages/admin/Repartidores';
+import Encargados from './pages/admin/Encargados';
 import Pedidos from './pages/admin/Pedidos';
 import Restaurantes from './pages/admin/Restaurantes';
 import Reportes from './pages/admin/Reportes';

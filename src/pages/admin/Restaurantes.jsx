@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/api';
+
 import '../../styles/admin.css';
 
 const ReporteCard = ({ titulo, children, cargando, error }) => (

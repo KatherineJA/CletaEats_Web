@@ -595,6 +595,182 @@
   margin: 0;
 }
 
+.admin-textarea {
+  resize: vertical;
+  min-height: 96px;
+}
+
+.admin-button-secondary {
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--gris-claro);
+  background: var(--blanco);
+  color: var(--teal-oscuro);
+  font-size: 14px;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.admin-button-secondary:hover {
+  transform: translateY(-1px);
+  border-color: var(--teal-medio);
+  background: var(--teal-surface);
+}
+
+.admin-button-danger {
+  border-color: #d4a0a8;
+  color: #8f2f3b;
+}
+
+.admin-button-danger:hover {
+  border-color: #c85b6e;
+  background: #fce6ea;
+}
+
+.encargado-page {
+  display: grid;
+  gap: 16px;
+}
+
+.encargado-hero {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 16px;
+  background: linear-gradient(135deg, #ffffff 0%, #eef8f6 100%);
+}
+
+.encargado-hero__copy {
+  flex: 1;
+  display: grid;
+  gap: 10px;
+}
+
+.encargado-hero__eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--teal-medio);
+}
+
+.encargado-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.encargado-hero__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+  min-width: min(240px, 100%);
+}
+
+.encargado-hero__action {
+  min-width: 100%;
+}
+
+.encargado-layout {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 16px;
+}
+
+.encargado-panel {
+  height: 100%;
+}
+
+.encargado-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.encargado-snapshot {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.encargado-snapshot__item {
+  padding: 12px 14px;
+  border: 1px solid var(--borde-suave);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdfc 100%);
+}
+
+.encargado-snapshot__item strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--teal-oscuro);
+}
+
+.encargado-combo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.encargado-combo-card {
+  display: grid;
+  gap: 12px;
+  height: 100%;
+  align-content: start;
+}
+
+.encargado-combo-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.encargado-combo-card__price {
+  color: var(--teal-profundo);
+  white-space: nowrap;
+}
+
+.encargado-combo-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.encargado-combo-card__actions {
+  justify-content: flex-start;
+  margin-top: auto;
+}
+
+.encargado-danger-button {
+  border-color: #d4a0a8;
+  color: #8f2f3b;
+}
+
+.encargado-danger-button:hover {
+  border-color: #c85b6e;
+  background: #fce6ea;
+}
+
+.encargado-empty {
+  padding: 16px;
+  border: 1px dashed var(--gris-claro);
+  border-radius: 12px;
+  color: var(--texto-secundario);
+  background: #fbfdfc;
+}
+
+.encargado-tabs {
+  margin-bottom: 4px;
+}
+
+.encargado-tabs .admin-tab-button {
+  min-height: 76px;
+}
+
 .admin-form-actions {
   display: flex;
   gap: 10px;
@@ -638,6 +814,30 @@
 .admin-badge--warning { background: #fff3cd; color: #b26a00; }
 .admin-badge--danger  { background: #fde2e8; color: #c62828; }
 .admin-badge--neutral { background: #eceff1; color: #455a64; }
+
+.admin-alert--success {
+  background: #edf8f0;
+  border: 1px solid #cde8d4;
+  color: #2e7d32;
+}
+
+.admin-alert--danger {
+  background: #fef0f2;
+  border: 1px solid #f2c7cf;
+  color: #b4232a;
+}
+
+.admin-alert--warning {
+  background: #fff7e6;
+  border: 1px solid #f1ddb1;
+  color: #8a5a00;
+}
+
+.admin-alert--info {
+  background: #eef8f6;
+  border: 1px solid #cfe7e2;
+  color: var(--teal-oscuro);
+}
 
 
 /* ═══════════════════════════════════════════════════════════
@@ -686,6 +886,19 @@
   .admin-grid--quick-actions {
     grid-template-columns: repeat(2, 1fr);
   }
+
+  .encargado-hero {
+    flex-direction: column;
+  }
+
+  .encargado-hero__actions {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .encargado-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 480px) {
@@ -729,6 +942,14 @@
 
   .admin-form-grid--3 {
     grid-template-columns: 1fr;
+  }
+
+  .encargado-panel__head {
+    flex-direction: column;
+  }
+
+  .encargado-combo-card__head {
+    flex-direction: column;
   }
 
   .admin-form-actions {

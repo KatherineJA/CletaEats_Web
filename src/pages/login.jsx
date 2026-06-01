@@ -19,14 +19,16 @@ const Login = () => {
             console.log("Respuesta completa del servidor:", response.data);
 
            if (response.data.exito) {
-    // Extraemos los datos directamente de response.data porque vienen "sueltos"
-    const { id, rol, nombre } = response.data;
+   
+    const { id, rol, nombre,id_restaurante } = response.data;
 
     
     localStorage.setItem('userRole', rol);
     localStorage.setItem('userId', id);
     localStorage.setItem('userName', nombre);
-    
+    localStorage.setItem('restaurantId', id_restaurante ?? '');
+
+
     console.log("Rol detectado:", rol);
 
    
