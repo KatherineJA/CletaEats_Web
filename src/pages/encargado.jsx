@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import OpcionesComboModal from './OpcionesComboModal';
 import api from '../api/api';
 import '../styles/admin.css';
 
@@ -8,6 +9,48 @@ const currencyFormatter = new Intl.NumberFormat('es-CR', {
   currency: 'CRC',
   maximumFractionDigits: 0,
 });
+
+const COMBO_OPTION_TEMPLATES = [
+  {
+    id: 'sabor-fresco',
+    label: 'Sabor de fresco',
+    tipo: 'SELECCION_UNICA',
+    valores: [
+      { descripcion: 'Naranja', costo_adicional: 0 },
+      { descripcion: 'Piña', costo_adicional: 0 },
+      { descripcion: 'Jamaica', costo_adicional: 0 },
+      { descripcion: 'Tamarindo', costo_adicional: 0 },
+    ],
+  },
+  {
+    id: 'tamano-combo',
+    label: 'Tamaño del combo',
+    tipo: 'SELECCION_UNICA',
+    valores: [
+      { descripcion: 'Personal', costo_adicional: 0 },
+      { descripcion: 'Regular', costo_adicional: 0 },
+      { descripcion: 'Grande', costo_adicional: 0 },
+    ],
+  },
+  {
+    id: 'bebida-incluida',
+    label: 'Bebida incluida',
+    tipo: 'BOOLEANO',
+    valores: [
+      { descripcion: 'Sí', costo_adicional: 0 },
+      { descripcion: 'No', costo_adicional: 0 },
+    ],
+  },
+  {
+    id: 'extra-salsa',
+    label: 'Salsa extra',
+    tipo: 'BOOLEANO',
+    valores: [
+      { descripcion: 'Sí', costo_adicional: 0 },
+      { descripcion: 'No', costo_adicional: 0 },
+    ],
+  },
+];
 
 const buildComboForm = (combo = null) => ({
   nombre: combo?.nombre ?? '',
@@ -23,8 +66,6 @@ export default function EncargadoHome() {
   // ── Datos del usuario desde localStorage ──────────────────────────────────
   const nombre         = localStorage.getItem('userName')          || 'Encargado';
   const idRestaurante  = localStorage.getItem('restaurantId') || localStorage.getItem('id_restaurante') || null;
-  const restaurantName = localStorage.getItem('restaurantName')    || 'Restaurante asignado';
-  const restaurantAddr = localStorage.getItem('restaurantAddress') || 'Dirección por sincronizar';
 
   // Log de depuración local
   useEffect(() => {
@@ -34,11 +75,15 @@ export default function EncargadoHome() {
   // ── Estado principal ──────────────────────────────────────────────────────
   const [combos,         setCombos]         = useState([]);
   const [loadingCombos,  setLoadingCombos]  = useState(true);
-  const [activeSection,  setActiveSection]  = useState('combos');
+  const [comboModal, setComboModal] = useState(null);
   const [editingComboId, setEditingComboId] = useState(null);
   const [comboForm,      setComboForm]      = useState(buildComboForm());
+  const [comboImageFile, setComboImageFile] = useState(null);
+  const [comboImagePreview, setComboImagePreview] = useState('');
+  const [comboOptionTemplateIds, setComboOptionTemplateIds] = useState([]);
   const [feedback,       setFeedback]       = useState({ type: '', message: '' });
   const [submitting,     setSubmitting]     = useState(false);
+  
 
   const showFeedback = (type, message) => {
     setFeedback({ type, message });
@@ -93,17 +138,105 @@ export default function EncargadoHome() {
   const resetComboForm = () => {
     setEditingComboId(null);
     setComboForm(buildComboForm());
+    resetMediaAndTemplates();
   };
 
   const startEditCombo = (combo) => {
     setEditingComboId(combo.id);
     setComboForm(buildComboForm(combo));
-    setActiveSection('combos');
+    resetMediaAndTemplates();
+    if (combo.imagen || combo.imagen_url || combo.ruta_imagen) {
+      setComboImagePreview(combo.imagen || combo.imagen_url || combo.ruta_imagen);
+    }
+    document.getElementById('combo-form-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     showFeedback('info', `Editando "${combo.nombre}". Guardá los cambios para actualizar.`);
   };
 
   const handleComboFieldChange = (field, value) => {
     setComboForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleComboImageChange = (event) => {
+    const file = event.target.files?.[0] ?? null;
+
+    if (comboImagePreview && comboImagePreview.startsWith('blob:')) {
+      URL.revokeObjectURL(comboImagePreview);
+    }
+
+    setComboImageFile(file);
+    setComboImagePreview(file ? URL.createObjectURL(file) : '');
+  };
+
+  const toggleOptionTemplate = (templateId) => {
+    setComboOptionTemplateIds((current) => (
+      current.includes(templateId)
+        ? current.filter((id) => id !== templateId)
+        : [...current, templateId]
+    ));
+  };
+
+  const handlePersonalizacionClick = () => {
+    if (!editingComboId) {
+      showFeedback('info', 'Primero creá el combo. Después podés abrir Opciones de personalización desde su tarjeta para agregar valores normales.');
+      return;
+    }
+
+    const combo = combos.find((item) => item.id === editingComboId);
+    if (combo) {
+      setComboModal(combo);
+      return;
+    }
+
+    showFeedback('danger', 'No se encontró el combo que estás editando. Volvé a cargar la lista.');
+  };
+
+  const resetMediaAndTemplates = () => {
+    if (comboImagePreview && comboImagePreview.startsWith('blob:')) {
+      URL.revokeObjectURL(comboImagePreview);
+    }
+
+    setComboImageFile(null);
+    setComboImagePreview('');
+    setComboOptionTemplateIds([]);
+  };
+
+  const buildComboPayload = () => {
+    const selectedTemplates = COMBO_OPTION_TEMPLATES
+      .filter((template) => comboOptionTemplateIds.includes(template.id))
+      .map((template) => ({
+        nombre: template.label,
+        tipo: template.tipo,
+        valores: template.valores,
+      }));
+
+    const basePayload = {
+      nombre: comboForm.nombre.trim(),
+      descripcion: comboForm.descripcion.trim(),
+      numero: comboForm.numero.trim() === '' ? 0 : Number(comboForm.numero),
+      precio: Number(comboForm.precio),
+      estado: comboForm.estado,
+      opciones_predefinidas: selectedTemplates,
+    };
+
+    if (!comboImageFile && selectedTemplates.length === 0) {
+      return basePayload;
+    }
+
+    const formData = new FormData();
+    Object.entries(basePayload).forEach(([key, value]) => {
+      if (Array.isArray(value) || (typeof value === 'object' && value !== null)) {
+        formData.append(key, JSON.stringify(value));
+        return;
+      }
+
+      formData.append(key, String(value));
+    });
+
+    if (comboImageFile) {
+      formData.append('imagen', comboImageFile);
+    }
+
+    return formData;
   };
 
   // ── Crear / Actualizar combo ──────────────────────────────────────────────
@@ -130,17 +263,26 @@ export default function EncargadoHome() {
                         editingComboId !== undefined && 
                         String(editingComboId).trim() !== '' && 
                         String(editingComboId) !== 'null';
+      const payload = buildComboPayload();
 
       if (esEdicion) {
         // ── RUTA B: UPDATE ────────────────────────────────────────────────────
-        const { data } = await api.post('/combo/actualizar', {
-          id_combo:    Number(editingComboId),
-          nombre:      nombreCombo,
-          descripcion: descripcion,
-          numero:      comboForm.numero.trim() === '' ? 0 : Number(comboForm.numero),
-          precio:      Number(comboForm.precio),
-          imagen:      null
-        });
+        const requestPayload = payload instanceof FormData
+          ? (() => {
+              payload.append('id_combo', String(Number(editingComboId)));
+              return payload;
+            })()
+          : {
+              id_combo: Number(editingComboId),
+              ...payload,
+              imagen: null,
+            };
+
+        const { data } = await api.post(
+          '/combo/actualizar',
+          requestPayload,
+          requestPayload instanceof FormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : undefined,
+        );
 
         if (data.exito) {
           showFeedback('success', `"${nombreCombo}" fue actualizado.`);
@@ -151,17 +293,22 @@ export default function EncargadoHome() {
         }
       } else {
         // ── RUTA A: CREATE ────────────────────────────────────────────────────
-        // Enviamos los tipos numéricos nativos directos y limpios para saltar las validaciones básicas de Python
-        const payloadCrear = {
-          id_restaurante: parsedRestauranteId,
-          nombre:         nombreCombo,
-          descripcion:    descripcion,
-          precio:         Number(comboForm.precio),
-          numero:         comboForm.numero.trim() === '' ? 0 : Number(comboForm.numero),
-          imagen:         null 
-        };
+        const requestPayload = payload instanceof FormData
+          ? (() => {
+              payload.append('id_restaurante', String(parsedRestauranteId));
+              return payload;
+            })()
+          : {
+              id_restaurante: parsedRestauranteId,
+              ...payload,
+              imagen: null,
+            };
 
-        const { data } = await api.post('/combo', payloadCrear);
+        const { data } = await api.post(
+          '/combo',
+          requestPayload,
+          requestPayload instanceof FormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : undefined,
+        );
 
         if (data.exito) {
           showFeedback('success', `"${nombreCombo}" fue creado correctamente.`);
@@ -207,15 +354,10 @@ export default function EncargadoHome() {
         <div className="encargado-hero__copy">
           <div className="encargado-hero__eyebrow">Panel de encargado</div>
           <h1 className="admin-title">Bienvenido, {nombre}</h1>
-          <p className="admin-subtitle">Desde aquí administrás el restaurante: creá, modificá y eliminá combos.</p>
-          <div className="encargado-hero__meta">
-            <span className="admin-badge admin-badge--info">{restaurantName}</span>
-            <span className="admin-badge admin-badge--neutral">{restaurantAddr}</span>
-            <span className="admin-badge admin-badge--success">{combosActivos} combos activos</span>
-          </div>
+          <p className="admin-subtitle">Desde aquí administrás los combos, sus opciones y su imagen opcional.</p>
         </div>
         <div className="encargado-hero__actions">
-          <button type="button" className="admin-action-button encargado-hero__action" onClick={() => setActiveSection('combos')}>
+          <button type="button" className="admin-action-button encargado-hero__action" onClick={() => document.getElementById('combo-form-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
             Administrar combos
           </button>
           <button type="button" className="admin-action-button encargado-hero__action" onClick={logout}>
@@ -239,20 +381,6 @@ export default function EncargadoHome() {
         ))}
       </div>
 
-      {/* Tabs */}
-      <div className="admin-tabs admin-tabs--split encargado-tabs">
-        {['combos', 'resumen'].map((section) => (
-          <button
-            key={section}
-            type="button"
-            className={`admin-tab-button ${activeSection === section ? 'admin-tab-button--active' : ''}`}
-            onClick={() => setActiveSection(section)}
-          >
-            <span>{section === 'combos' ? 'Combos' : 'Resumen operativo'}</span>
-          </button>
-        ))}
-      </div>
-
       {/* Feedback global */}
       {feedback.message && (
         <div className={`admin-alert admin-alert--${feedback.type}`}>
@@ -262,36 +390,23 @@ export default function EncargadoHome() {
 
       {/* Layout central */}
       <div className="encargado-layout">
-        {/* Panel resumen */}
-        <div className="admin-card admin-card--section encargado-panel">
-          <div className="encargado-panel__head">
-            <div>
-              <h2 className="admin-card__title">Resumen del restaurante</h2>
-            </div>
-          </div>
-          <div className="encargado-snapshot">
-            <div className="encargado-snapshot__item">
-              <span className="admin-helper">Prioridad actual</span>
-              <strong>Combos y promociones</strong>
-            </div>
-            <div className="encargado-snapshot__item">
-              <span className="admin-helper">Estado API</span>
-              <strong>Conectado listo</strong>
-            </div>
-          </div>
-        </div>
-
         {/* Panel formulario */}
-        <div className="admin-card admin-card--section encargado-panel">
+        <div id="combo-form-panel" className="admin-card admin-card--section encargado-panel">
           <div className="encargado-panel__head">
             <div>
               <h2 className="admin-card__title">{editingComboId ? 'Editar combo' : 'Crear combo'}</h2>
+              <p className="admin-helper">Las opciones pre cargadas y la imagen se agregan aquí si querés; ambas siguen siendo editables después.</p>
             </div>
-            {editingComboId && (
-              <button type="button" className="admin-tab" onClick={resetComboForm}>
-                Cancelar edición
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'stretch', minWidth: 220 }}>
+              <button type="button" className="admin-tab" onClick={handlePersonalizacionClick}>
+                Opciones de personalización
               </button>
-            )}
+              {editingComboId && (
+                <button type="button" className="admin-tab" onClick={resetComboForm}>
+                  Cancelar edición
+                </button>
+              )}
+            </div>
           </div>
 
           <form className="admin-form" onSubmit={handleSubmitCombo}>
@@ -360,6 +475,56 @@ export default function EncargadoHome() {
               </div>
             </div>
 
+            <div className="encargado-form-extras">
+              <div className="admin-form-section">
+                <div className="admin-form-section__head">
+                  <h3 className="modal-section__title" style={{ marginBottom: 6 }}>Imagen del combo</h3>
+                  <p className="admin-helper">La imagen es opcional. Si la subís ahora, se guardará junto al combo; si no, podés agregarla después.</p>
+                </div>
+                <input
+                  className="admin-input"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleComboImageChange}
+                />
+                {comboImagePreview && (
+                  <div className="encargado-image-preview">
+                    <img src={comboImagePreview} alt="Vista previa del combo" />
+                  </div>
+                )}
+              </div>
+
+              <div className="admin-form-section">
+                <div className="admin-form-section__head">
+                  <h3 className="modal-section__title" style={{ marginBottom: 6 }}>Opciones pre cargadas</h3>
+                  <p className="admin-helper">Elegí cuáles querés agregar al crear el combo. Después podrás ajustarlas en Opciones.</p>
+                </div>
+                <div className="encargado-template-grid">
+                  {COMBO_OPTION_TEMPLATES.map((template) => {
+                    const selected = comboOptionTemplateIds.includes(template.id);
+
+                    return (
+                      <button
+                        key={template.id}
+                        type="button"
+                        className={`encargado-template-card ${selected ? 'encargado-template-card--active' : ''}`}
+                        onClick={() => toggleOptionTemplate(template.id)}
+                      >
+                        <span className="encargado-template-card__title">{template.label}</span>
+                        <span className="encargado-template-card__meta">{template.valores.map((valor) => valor.descripcion).join(' · ')}</span>
+                        <span className="encargado-template-card__action">{selected ? 'Agregada' : 'Agregar al combo'}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="encargado-template-summary">
+                  {comboOptionTemplateIds.length > 0
+                    ? `${comboOptionTemplateIds.length} opción(es) seleccionada(s) para este combo.`
+                    : 'Todavía no seleccionaste opciones pre cargadas.'}
+                </div>
+              </div>
+            </div>
+
             <div className="admin-form-actions">
               <button type="button" className="admin-tab" onClick={resetComboForm}>Limpiar</button>
               <button type="submit" className="admin-submit-button" disabled={submitting}>
@@ -401,8 +566,18 @@ export default function EncargadoHome() {
                     {currencyFormatter.format(Number(combo.precio || 0))}
                   </strong>
                 </div>
+                {combo.imagen || combo.imagen_url || combo.ruta_imagen ? (
+                  <div className="encargado-combo-card__image-wrap">
+                    <img
+                      className="encargado-combo-card__image"
+                      src={combo.imagen || combo.imagen_url || combo.ruta_imagen}
+                      alt={combo.nombre}
+                    />
+                  </div>
+                ) : null}
                 {combo.descripcion && <p className="admin-helper">{combo.descripcion}</p>}
                 <div className="admin-form-actions encargado-combo-card__actions">
+                  <button type="button" className="admin-tab" onClick={() => setComboModal(combo)}>Opciones</button>
                   <button type="button" className="admin-tab" onClick={() => startEditCombo(combo)}>Modificar</button>
                   <button type="button" className="admin-tab encargado-danger-button" onClick={() => deleteCombo(combo)}>Eliminar</button>
                 </div>
@@ -411,6 +586,13 @@ export default function EncargadoHome() {
           </div>
         )}
       </div>
+
+      {comboModal && (
+        <OpcionesComboModal
+          combo={comboModal}
+          onClose={() => setComboModal(null)}
+        />
+      )}
     </div>
   );
 }
