@@ -54,8 +54,8 @@ const Login = () => {
                 localStorage.setItem('userName', nombre);
                 localStorage.setItem('restaurantId', id_restaurante ?? '');
                 
-                if (rol === 'ADMIN') console.log('/admin');
-                else if (rol === 'ENCARGADO') console.log('/encargado');
+                if (rol === 'ADMIN') window.location.href = '/admin';
+                else if (rol === 'ENCARGADO') window.location.href = '/encargado';
                 else setLoginError(`El rol ${rol} no tiene acceso al panel administrativo.`);
             } else {
                 setLoginError(response.data.mensaje || 'Credenciales incorrectas');
