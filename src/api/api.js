@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'https://cletaeats-backend-rgn1.onrender.com/',
+  baseURL: 'https://cletaeats-backend-kprs.onrender.com',
   headers: {
     'Content-Type': 'application/json'
   }
