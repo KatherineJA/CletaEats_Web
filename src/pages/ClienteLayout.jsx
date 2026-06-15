@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../api/api';
 
-// ── Utilidades ──────────────────────────────────────────────────────────────
 const usuario = {
     id: () => parseInt(localStorage.getItem('userId')),
     nombre: () => localStorage.getItem('userName') || 'Cliente',
@@ -10,7 +9,6 @@ const usuario = {
 
 const fmt = (n) => `₡${Number(n).toLocaleString('es-CR', { minimumFractionDigits: 0 })}`;
 
-// ── Componente principal ─────────────────────────────────────────────────────
 export default function ClienteLayout() {
     const [seccion, setSeccion] = useState('restaurantes');
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -19,11 +17,9 @@ export default function ClienteLayout() {
         <>
             <style>{css}</style>
             <div className="admin-layout">
-                {/* Botón hamburguesa móvil */}
                 <button className="admin-sidebar__toggle" onClick={() => setSidebarOpen(true)}>☰</button>
                 {sidebarOpen && <div className="admin-sidebar__overlay admin-sidebar__overlay--visible" onClick={() => setSidebarOpen(false)} />}
 
-                {/* Sidebar */}
                 <aside className={`admin-sidebar ${sidebarOpen ? 'admin-sidebar--open' : ''}`}>
                     <div className="admin-sidebar__header">
                         <div className="admin-sidebar__logo">
@@ -57,7 +53,6 @@ export default function ClienteLayout() {
                     </div>
                 </aside>
 
-                {/* Contenido */}
                 <main className="admin-main">
                     {seccion === 'restaurantes' && <SeccionRestaurantes onPedir={() => setSeccion('pedidos')} />}
                     {seccion === 'pedidos' && <SeccionPedidos />}
@@ -68,18 +63,149 @@ export default function ClienteLayout() {
     );
 }
 
-// ── Sección: Restaurantes → Combos → Pedido ──────────────────────────────────
+// ── Mapa Leaflet ─────────────────────────────────────────────────────────────
+function MapaPedido({ restaurante, onUbicacionConfirmada }) {
+    const mapRef = useRef(null);
+    const mapInstanceRef = useRef(null);
+    const markerRestRef = useRef(null);
+    const markerDestRef = useRef(null);
+    const lineaRef = useRef(null);
+    const [destino, setDestino] = useState(null);
+    const [distancia, setDistancia] = useState(null);
+
+    useEffect(() => {
+        // Cargar Leaflet CSS si no está
+        if (!document.getElementById('leaflet-css')) {
+            const link = document.createElement('link');
+            link.id = 'leaflet-css';
+            link.rel = 'stylesheet';
+            link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+            document.head.appendChild(link);
+        }
+
+        // Cargar Leaflet JS si no está
+        const cargarLeaflet = () => {
+            if (window.L) {
+                iniciarMapa();
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+            script.onload = iniciarMapa;
+            document.head.appendChild(script);
+        };
+
+        const iniciarMapa = () => {
+            if (mapInstanceRef.current) return;
+            const L = window.L;
+
+            const latRest = parseFloat(restaurante.latitud) || 9.9281;
+            const lonRest = parseFloat(restaurante.longitud) || -84.0907;
+
+            const map = L.map(mapRef.current).setView([latRest, lonRest], 14);
+            mapInstanceRef.current = map;
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(map);
+
+            // Marcador restaurante
+            const iconoRest = L.divIcon({
+                html: '<div style="background:#00796b;color:#fff;border-radius:50%;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:18px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3)">🏪</div>',
+                className: '', iconAnchor: [18, 18]
+            });
+            markerRestRef.current = L.marker([latRest, lonRest], { icon: iconoRest })
+                .addTo(map)
+                .bindPopup(`<b>${restaurante.nombre}</b><br>Punto de origen`);
+
+            // Click en mapa para destino
+            map.on('click', (e) => {
+                const { lat, lng } = e.latlng;
+
+                if (markerDestRef.current) markerDestRef.current.remove();
+                if (lineaRef.current) lineaRef.current.remove();
+
+                const iconoDest = L.divIcon({
+                    html: '<div style="background:#1565c0;color:#fff;border-radius:50%;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:18px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3)">📍</div>',
+                    className: '', iconAnchor: [18, 18]
+                });
+                markerDestRef.current = L.marker([lat, lng], { icon: iconoDest })
+                    .addTo(map)
+                    .bindPopup('Tu dirección de entrega').openPopup();
+
+                lineaRef.current = L.polyline([[latRest, lonRest], [lat, lng]], {
+                    color: '#00796b', weight: 3, dashArray: '6,8'
+                }).addTo(map);
+
+                // Distancia en línea recta (Haversine)
+                const R = 6371;
+                const dLat = (lat - latRest) * Math.PI / 180;
+                const dLon = (lng - lonRest) * Math.PI / 180;
+                const a = Math.sin(dLat / 2) ** 2 +
+                    Math.cos(latRest * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+                const dist = R * 2 * Math.asin(Math.sqrt(a));
+
+                setDestino({ lat, lng });
+                setDistancia(dist);
+                onUbicacionConfirmada({ lat, lng, distancia: dist });
+            });
+
+            // Intentar geolocalización del cliente
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    map.setView([pos.coords.latitude, pos.coords.longitude], 14);
+                },
+                () => {} // silencioso si no tiene permisos
+            );
+        };
+
+        cargarLeaflet();
+
+        return () => {
+            if (mapInstanceRef.current) {
+                mapInstanceRef.current.remove();
+                mapInstanceRef.current = null;
+            }
+        };
+    }, []);
+
+    return (
+        <div>
+            <p style={{ fontSize: 13, color: 'var(--texto-secundario)', marginBottom: 8 }}>
+                📍 Hacé clic en el mapa para marcar tu dirección de entrega
+            </p>
+            <div ref={mapRef} style={{ height: 300, borderRadius: 12, border: '1px solid var(--borde-suave)', overflow: 'hidden' }} />
+            {destino && (
+                <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--teal-surface)', borderRadius: 8, fontSize: 13, color: 'var(--teal-oscuro)' }}>
+                     Destino seleccionado · Distancia aprox: <strong>{distancia?.toFixed(2)} km</strong>
+                </div>
+            )}
+            {!destino && (
+                <div style={{ marginTop: 8, padding: '8px 12px', background: '#fff3e0', borderRadius: 8, fontSize: 13, color: '#e65100' }}>
+                    ⚠️ Seleccioná tu dirección en el mapa para continuar
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ── Sección Restaurantes ─────────────────────────────────────────────────────
 function SeccionRestaurantes({ onPedir }) {
     const [restaurantes, setRestaurantes] = useState([]);
     const [restauranteSeleccionado, setRestauranteSeleccionado] = useState(null);
     const [combos, setCombos] = useState([]);
     const [cargando, setCargando] = useState(true);
-    const [carrito, setCarrito] = useState([]); // [{combo, cantidad, preferencias}]
+    const [carrito, setCarrito] = useState([]);
     const [modalCombo, setModalCombo] = useState(null);
     const [preferencias, setPreferencias] = useState({});
     const [enviando, setEnviando] = useState(false);
     const [mensaje, setMensaje] = useState('');
     const [busqueda, setBusqueda] = useState('');
+
+    // Mapa y pago
+    const [ubicacionDestino, setUbicacionDestino] = useState(null); // { lat, lng, distancia }
+    const [metodoPago, setMetodoPago] = useState('EFECTIVO');
+    const [numeroTarjeta, setNumeroTarjeta] = useState('');
 
     useEffect(() => {
         api.get('/restaurantes').then(r => {
@@ -88,24 +214,25 @@ function SeccionRestaurantes({ onPedir }) {
     }, []);
 
     const seleccionarRestaurante = async (rest) => {
-    setRestauranteSeleccionado(rest);
-    setCarrito([]);
-    setMensaje('');
-    setCargando(true);
-    try {
-        const r = await api.get(`/combos?id_restaurante=${rest.id}`);
-        const lista = Array.isArray(r.data?.combos) ? r.data.combos : [];
-        
-        // Usar /combo/detalle que devuelve opciones CON valores incluidos
-        const conOpciones = await Promise.all(lista.map(async (c) => {
-            try {
-                const op = await api.get(`/combo/detalle?id_combo=${c.id}`);
-                return { ...c, opciones: Array.isArray(op.data?.opciones) ? op.data.opciones : [] };
-            } catch { return { ...c, opciones: [] }; }
-        }));
-        setCombos(conOpciones);
-    } finally { setCargando(false); }
-};
+        setRestauranteSeleccionado(rest);
+        setCarrito([]);
+        setMensaje('');
+        setUbicacionDestino(null);
+        setMetodoPago('EFECTIVO');
+        setNumeroTarjeta('');
+        setCargando(true);
+        try {
+            const r = await api.get(`/combos?id_restaurante=${rest.id}`);
+            const lista = Array.isArray(r.data?.combos) ? r.data.combos : [];
+            const conOpciones = await Promise.all(lista.map(async (c) => {
+                try {
+                    const op = await api.get(`/combo/detalle?id_combo=${c.id}`);
+                    return { ...c, opciones: Array.isArray(op.data?.opciones) ? op.data.opciones : [] };
+                } catch { return { ...c, opciones: [] }; }
+            }));
+            setCombos(conOpciones);
+        } finally { setCargando(false); }
+    };
 
     const abrirModalCombo = (combo) => {
         setModalCombo(combo);
@@ -146,41 +273,52 @@ function SeccionRestaurantes({ onPedir }) {
     };
 
     const totalCarrito = carrito.reduce((s, i) => s + i.combo.precio * i.cantidad, 0);
-    const COSTO_KM = 500;
-    const distancia = 2.5; // En producción vendría del mapa
-    const costoEnvio = distancia * COSTO_KM;
+    const PORCENTAJE_ENVIO = 0.10;
+    const costoEnvio = ubicacionDestino ? round2(totalCarrito * PORCENTAJE_ENVIO) : 0;
+    const iva = round2((totalCarrito + costoEnvio) * 0.13);
+    const total = round2(totalCarrito + costoEnvio + iva);
 
-   const enviarPedido = async () => {
-    if (carrito.length === 0) return;
-    setEnviando(true);
-    setMensaje('');
-    try {
-        const pos = await new Promise((res) =>
-            navigator.geolocation.getCurrentPosition(res, () => res({ coords: { latitude: 9.9975, longitude: -84.1150 } }), { timeout: 8000 })
-        );
+    function round2(n) { return Math.round(n * 100) / 100; }
 
-        const payload = {
-            id_cliente: usuario.id(),
-            id_restaurante: restauranteSeleccionado.id,
-            lat_restaurante: parseFloat(restauranteSeleccionado.latitud),
-            lon_restaurante: parseFloat(restauranteSeleccionado.longitud),
-            lat_destino: pos.coords.latitude,
-            lon_destino: pos.coords.longitude,
-            items: carrito.map(i => ({
-                id_combo: i.combo.id,
-                cantidad: i.cantidad,
-                precio_unitario: parseFloat(i.combo.precio),
-                extras_costo: 0,
-                valores_opcion: i.preferencias
-            }))
-        };
-        await api.post('/pedido', payload);
-        setMensaje('✅ ¡Pedido enviado con éxito! Pronto un repartidor lo tomará.');
-        setCarrito([]);
-    } catch (e) {
-        setMensaje('❌ ' + (e.response?.data?.mensaje || 'Error al enviar el pedido'));
-    } finally { setEnviando(false); }
-};
+    const enviarPedido = async () => {
+        if (carrito.length === 0) return;
+        if (!ubicacionDestino) {
+            setMensaje('❌ Seleccioná tu dirección en el mapa antes de confirmar');
+            return;
+        }
+        if (metodoPago === 'TARJETA' && numeroTarjeta.trim().length < 16) {
+            setMensaje('❌ Ingresá un número de tarjeta válido (16 dígitos)');
+            return;
+        }
+
+        setEnviando(true);
+        setMensaje('');
+        try {
+            const payload = {
+                id_cliente: usuario.id(),
+                id_restaurante: restauranteSeleccionado.id,
+                lat_restaurante: parseFloat(restauranteSeleccionado.latitud),
+                lon_restaurante: parseFloat(restauranteSeleccionado.longitud),
+                lat_destino: ubicacionDestino.lat,
+                lon_destino: ubicacionDestino.lng,
+                metodo_pago: metodoPago,
+                numero_tarjeta: metodoPago === 'TARJETA' ? numeroTarjeta.trim() : null,
+                items: carrito.map(i => ({
+                    id_combo: i.combo.id,
+                    cantidad: i.cantidad,
+                    precio_unitario: parseFloat(i.combo.precio),
+                    extras_costo: 0,
+                    valores_opcion: i.preferencias
+                }))
+            };
+            await api.post('/pedido', payload);
+            setMensaje('✅ ¡Pedido enviado con éxito! Pronto un repartidor lo tomará.');
+            setCarrito([]);
+            setUbicacionDestino(null);
+        } catch (e) {
+            setMensaje('❌ ' + (e.response?.data?.mensaje || 'Error al enviar el pedido'));
+        } finally { setEnviando(false); }
+    };
 
     const restaurantesFiltrados = restaurantes.filter(r =>
         r.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -189,7 +327,7 @@ function SeccionRestaurantes({ onPedir }) {
 
     if (!restauranteSeleccionado) return (
         <div className="admin-page">
-            <h1 className="admin-title">🍽️ Restaurantes</h1>
+            <h1 className="admin-title"> Restaurantes</h1>
             <p className="admin-subtitle">Elegí dónde querés pedir hoy</p>
             <input className="admin-input" placeholder="Buscar restaurante o tipo de comida..."
                 value={busqueda} onChange={e => setBusqueda(e.target.value)}
@@ -225,7 +363,7 @@ function SeccionRestaurantes({ onPedir }) {
                 </div>
             </div>
 
-            {mensaje && <div className={`admin-alert ${mensaje.startsWith('✅') ? 'admin-alert--success' : 'admin-alert--danger'}`}>{mensaje}</div>}
+            {mensaje && <div className={`admin-alert ${mensaje.startsWith('✅') ? 'admin-alert--success' : 'admin-alert--danger'}`} style={{ marginBottom: 16 }}>{mensaje}</div>}
 
             <div className="cliente-menu-layout">
                 {/* Combos */}
@@ -261,8 +399,9 @@ function SeccionRestaurantes({ onPedir }) {
                     )}
                 </div>
 
-                {/* Carrito */}
-                <div>
+                {/* Carrito + Mapa + Pago */}
+                <div style={{ display: 'grid', gap: 16 }}>
+                    {/* Carrito */}
                     <div className="admin-card admin-card--section" style={{ position: 'sticky', top: 16 }}>
                         <h2 className="admin-card__title">🛒 Mi pedido</h2>
                         {carrito.length === 0 ? (
@@ -284,19 +423,69 @@ function SeccionRestaurantes({ onPedir }) {
                                         <span>Subtotal</span><span>{fmt(totalCarrito)}</span>
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--texto-secundario)' }}>
-                                        <span>Envío ({distancia}km)</span><span>{fmt(costoEnvio)}</span>
+                                        <span>Envío (10%)</span><span>{ubicacionDestino ? fmt(costoEnvio) : '—'}</span>
                                     </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: 'var(--teal-profundo)', marginTop: 8, fontSize: 15 }}>
-                                        <span>Total</span><span>{fmt(totalCarrito + costoEnvio)}</span>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--texto-secundario)' }}>
+                                        <span>IVA (13%)</span><span>{ubicacionDestino ? fmt(iva) : '—'}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: 'var(--teal-profundo)', marginTop: 8, fontSize: 15, borderTop: '1px solid var(--borde-suave)', paddingTop: 8 }}>
+                                        <span>Total</span><span>{ubicacionDestino ? fmt(total) : '—'}</span>
                                     </div>
                                 </div>
-                                <button className="admin-submit-button" style={{ width: '100%', marginTop: 16 }}
-                                    onClick={enviarPedido} disabled={enviando}>
-                                    {enviando ? 'Enviando...' : '🚲 Confirmar pedido'}
-                                </button>
                             </>
                         )}
                     </div>
+
+                    {/* Mapa */}
+                    {carrito.length > 0 && (
+                        <div className="admin-card admin-card--section">
+                            <h2 className="admin-card__title">📍 Dirección de entrega</h2>
+                            <MapaPedido
+                                restaurante={restauranteSeleccionado}
+                                onUbicacionConfirmada={setUbicacionDestino}
+                            />
+                        </div>
+                    )}
+
+                    {/* Método de pago */}
+                    {carrito.length > 0 && ubicacionDestino && (
+                        <div className="admin-card admin-card--section">
+                            <h2 className="admin-card__title"> Método de pago</h2>
+                            <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+                                {['EFECTIVO', 'TARJETA'].map(m => (
+                                    <button key={m}
+                                        onClick={() => setMetodoPago(m)}
+                                        className={metodoPago === m ? 'admin-submit-button' : 'admin-button-secondary'}
+                                        style={{ flex: 1 }}>
+                                        {m === 'EFECTIVO' ? ' Efectivo' : ' Tarjeta'}
+                                    </button>
+                                ))}
+                            </div>
+                            {metodoPago === 'TARJETA' && (
+                                <div>
+                                    <label className="admin-form-label">Número de tarjeta</label>
+                                    <input
+                                        className="admin-input"
+                                        placeholder="1234 5678 9012 3456"
+                                        maxLength={19}
+                                        value={numeroTarjeta}
+                                        onChange={e => {
+                                            // Formato automático con espacios
+                                            const val = e.target.value.replace(/\D/g, '').slice(0, 16);
+                                            setNumeroTarjeta(val.replace(/(.{4})/g, '$1 ').trim());
+                                        }}
+                                    />
+                                    <p style={{ fontSize: 12, color: 'var(--texto-secundario)', marginTop: 4 }}>
+                                        Solo se usa para procesar este pedido
+                                    </p>
+                                </div>
+                            )}
+                            <button className="admin-submit-button" style={{ width: '100%', marginTop: 16 }}
+                                onClick={enviarPedido} disabled={enviando}>
+                                {enviando ? 'Enviando...' : '🚲 Confirmar pedido'}
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -346,28 +535,66 @@ function SeccionRestaurantes({ onPedir }) {
     );
 }
 
+// ── Sección Pedidos ──────────────────────────────────────────────────────────
 function SeccionPedidos() {
     const [pedidos, setPedidos] = useState([]);
     const [cargando, setCargando] = useState(true);
+    const [tab, setTab] = useState('activos');
     const [calificando, setCalificando] = useState(null);
     const [calForm, setCalForm] = useState({ tipo: 'BUENO', opinion: '' });
+    const [detalle, setDetalle] = useState(null);
+    const [detalleItems, setDetalleItems] = useState([]);
+    const [cargandoDetalle, setCargandoDetalle] = useState(false);
     const [mensaje, setMensaje] = useState('');
 
     const cargar = () => {
         setCargando(true);
         api.get(`/pedidos/cliente?id=${usuario.id()}`).then(r => {
-            setPedidos(Array.isArray(r.data) ? r.data : r.data?.pedidos || []);
+            setPedidos(Array.isArray(r.data?.datos) ? r.data.datos : []);
         }).finally(() => setCargando(false));
     };
 
     useEffect(() => { cargar(); }, []);
 
-    const estadoBadge = (e) => {
-        const m = { EN_PREPARACION: 'warning', EN_CAMINO: 'info', ENTREGADO: 'success', CANCELADO: 'danger' };
-        return m[e] || 'neutral';
+    const ACTIVOS = ['EN_PREPARACION', 'EN_CAMINO'];
+    const pedidosFiltrados = pedidos.filter(p => {
+        if (tab === 'activos') return ACTIVOS.includes(p.estado);
+        if (tab === 'entregados') return p.estado === 'ENTREGADO';
+        if (tab === 'cancelados') return p.estado === 'CANCELADO';
+        return true;
+    });
+
+    const estadoBadge = (e) => ({ EN_PREPARACION: 'warning', EN_CAMINO: 'info', ENTREGADO: 'success', CANCELADO: 'danger' }[e] || 'neutral');
+    const estadoLabel = (e) => ({ EN_PREPARACION: '⏳ En preparación', EN_CAMINO: '🚲 En camino', ENTREGADO: ' Entregado', CANCELADO: '❌ Cancelado' }[e] || e);
+
+    const verDetalle = async (p) => {
+        setDetalle(p);
+        setDetalleItems([]);
+        setCargandoDetalle(true);
+        try {
+            const r = await api.get(`/pedido/detalle?id=${p.id}`);
+            const items = r.data?.datos?.detalles || r.data?.detalles || [];
+            setDetalleItems(Array.isArray(items) ? items : []);
+        } catch { setDetalleItems([]); }
+        finally { setCargandoDetalle(false); }
     };
 
-    const estadoLabel = (e) => ({ EN_PREPARACION: '⏳ En preparación', EN_CAMINO: '🚲 En camino', ENTREGADO: '✅ Entregado', CANCELADO: '❌ Cancelado' }[e] || e);
+    const cancelarPedido = async (p) => {
+        if (!window.confirm(`¿Cancelar el pedido #${p.id}?`)) return;
+        try {
+            await api.post('/pedido/estado', {
+                id_pedido: p.id,
+                estado: 'CANCELADO',
+                id_solicitante: usuario.id(),
+                rol_solicitante: 'CLIENTE'
+            });
+            setMensaje(' Pedido cancelado');
+            setDetalle(null);
+            cargar();
+        } catch (e) {
+            setMensaje('❌ ' + (e.response?.data?.mensaje || 'Error al cancelar'));
+        }
+    };
 
     const calificar = async () => {
         try {
@@ -379,7 +606,7 @@ function SeccionPedidos() {
                 tipo: calForm.tipo,
                 opinion: calForm.opinion
             });
-            setMensaje('✅ Calificación enviada');
+            setMensaje('Calificación enviada');
             setCalificando(null);
             cargar();
         } catch (e) {
@@ -387,40 +614,148 @@ function SeccionPedidos() {
         }
     };
 
+    const conteo = (estado) => pedidos.filter(p =>
+        estado === 'activos' ? ACTIVOS.includes(p.estado) :
+        estado === 'entregados' ? p.estado === 'ENTREGADO' :
+        p.estado === 'CANCELADO'
+    ).length;
+
     return (
         <div className="admin-page">
             <h1 className="admin-title">📦 Mis Pedidos</h1>
             <p className="admin-subtitle">Seguí el estado de tus pedidos</p>
-            {mensaje && <div className={`admin-alert ${mensaje.startsWith('✅') ? 'admin-alert--success' : 'admin-alert--danger'}`} style={{ marginBottom: 16 }}>{mensaje}</div>}
-            {cargando ? <p className="admin-loading">Cargando pedidos...</p> : pedidos.length === 0 ? (
-                <div className="admin-card"><p className="admin-empty">No tenés pedidos todavía.</p></div>
-            ) : (
-                <div style={{ display: 'grid', gap: 12 }}>
-                    {pedidos.map(p => (
-                        <div key={p.id} className="admin-card">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-                                <div>
-                                    <span style={{ fontWeight: 600, color: 'var(--teal-oscuro)' }}>{p.restaurante}</span>
-                                    <span style={{ color: 'var(--texto-secundario)', fontSize: 13, marginLeft: 10 }}>Pedido #{p.id}</span>
-                                </div>
-                                <span className={`admin-badge admin-badge--${estadoBadge(p.estado)}`}>{estadoLabel(p.estado)}</span>
-                            </div>
-                            <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: 13, color: 'var(--texto-secundario)', marginBottom: 10 }}>
-                                <span>📅 {new Date(p.hora_creacion).toLocaleString('es-CR')}</span>
-                                <span>🚚 Envío: {fmt(p.costo_envio)}</span>
-                                {p.repartidor && <span>🚲 {p.repartidor}</span>}
-                            </div>
-                            {p.estado === 'ENTREGADO' && p.id_repartidor && (
-                                <button className="admin-button-secondary" style={{ fontSize: 13 }}
-                                    onClick={() => { setCalificando(p); setCalForm({ tipo: 'BUENO', opinion: '' }); }}>
-                                    ⭐ Calificar repartidor
-                                </button>
-                            )}
-                        </div>
-                    ))}
+
+            {mensaje && (
+                <div className={`admin-alert ${mensaje.startsWith('✅') ? 'admin-alert--success' : 'admin-alert--danger'}`}
+                    style={{ marginBottom: 16 }}>{mensaje}
+                    <button onClick={() => setMensaje('')} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>✕</button>
                 </div>
             )}
 
+            <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+                {[
+                    { id: 'activos', label: ' Activos', count: conteo('activos') },
+                    { id: 'entregados', label: ' Entregados', count: conteo('entregados') },
+                    { id: 'cancelados', label: ' Cancelados', count: conteo('cancelados') },
+                ].map(t => (
+                    <button key={t.id} onClick={() => setTab(t.id)}
+                        className={tab === t.id ? 'admin-submit-button' : 'admin-button-secondary'}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {t.label}
+                        <span style={{
+                            background: tab === t.id ? 'rgba(255,255,255,0.25)' : 'var(--teal-surface)',
+                            color: tab === t.id ? '#fff' : 'var(--teal-profundo)',
+                            borderRadius: 999, padding: '1px 8px', fontSize: 12, fontWeight: 700
+                        }}>{t.count}</span>
+                    </button>
+                ))}
+            </div>
+
+            {cargando ? <p className="admin-loading">Cargando pedidos...</p> :
+            pedidosFiltrados.length === 0 ? (
+                <div className="admin-card">
+                    <p className="admin-empty">No hay pedidos en esta categoría.</p>
+                </div>
+            ) : (
+                <div style={{ display: 'grid', gap: 12 }}>
+                    {pedidosFiltrados.map(p => {
+                        const total = parseFloat(p.total) || parseFloat(p.costo_envio) || 0;
+                        const subtotal = parseFloat(p.subtotal) || 0;
+                        const costoEnvio = parseFloat(p.costo_envio) || 0;
+                        return (
+                            <div key={p.id} className="admin-card">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                                    <div>
+                                        <span style={{ fontWeight: 700, color: 'var(--teal-oscuro)', fontSize: 15 }}>{p.nombre_restaurante}</span>
+                                        <span style={{ color: 'var(--texto-secundario)', fontSize: 13, marginLeft: 10 }}>Pedido #{p.id}</span>
+                                    </div>
+                                    <span className={`admin-badge admin-badge--${estadoBadge(p.estado)}`}>{estadoLabel(p.estado)}</span>
+                                </div>
+                                <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: 13, color: 'var(--texto-secundario)', marginBottom: 12 }}>
+                                    <span> {new Date(p.hora_creacion).toLocaleString('es-CR')}</span>
+                                    <span> Envío: {fmt(costoEnvio)}</span>
+                                    {subtotal > 0 && <span>🧾 Subtotal: {fmt(subtotal)}</span>}
+                                    {total > 0 && <span style={{ fontWeight: 700, color: 'var(--teal-profundo)' }}>💰 Total: {fmt(total)}</span>}
+                                </div>
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                    <button className="admin-button-secondary" style={{ fontSize: 13 }} onClick={() => verDetalle(p)}>
+                                         Ver detalle
+                                    </button>
+                                    {ACTIVOS.includes(p.estado) && (
+                                        <button className="admin-button-secondary admin-button-danger" style={{ fontSize: 13 }}
+                                            onClick={() => cancelarPedido(p)}>
+                                             Cancelar pedido
+                                        </button>
+                                    )}
+                                    {p.estado === 'ENTREGADO' && p.id_repartidor && (
+                                        <button className="admin-button-secondary" style={{ fontSize: 13 }}
+                                            onClick={() => { setCalificando(p); setCalForm({ tipo: 'BUENO', opinion: '' }); }}>
+                                            ⭐ Calificar repartidor
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+
+            {/* Modal detalle */}
+            {detalle && (
+                <div className="modal-overlay" onClick={() => setDetalle(null)}>
+                    <div className="modal-box" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <div>
+                                <h3 style={{ color: 'var(--teal-oscuro)' }}>Pedido #{detalle.id}</h3>
+                                <p style={{ color: 'var(--texto-secundario)', fontSize: 13 }}>{detalle.nombre_restaurante}</p>
+                            </div>
+                            <button className="modal-close-btn" onClick={() => setDetalle(null)}>✕</button>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                            <span className={`admin-badge admin-badge--${estadoBadge(detalle.estado)}`}>{estadoLabel(detalle.estado)}</span>
+                            <span className="admin-badge admin-badge--neutral"> {new Date(detalle.hora_creacion).toLocaleString('es-CR')}</span>
+                        </div>
+                        <div className="modal-section">
+                            <p className="modal-section__title">Combos pedidos</p>
+                            {cargandoDetalle ? <p className="admin-loading">Cargando...</p> :
+                            detalleItems.length === 0 ? <p className="admin-empty">Sin detalles disponibles.</p> : (
+                                <div style={{ display: 'grid', gap: 8 }}>
+                                    {detalleItems.map((item, i) => (
+                                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: '#fff', borderRadius: 8, border: '1px solid var(--borde-suave)' }}>
+                                            <div>
+                                                <div style={{ fontWeight: 600, fontSize: 14 }}>#{item.numero_combo} {item.combo}</div>
+                                                <div style={{ fontSize: 12, color: 'var(--texto-secundario)' }}>x{item.cantidad}</div>
+                                            </div>
+                                            <span style={{ fontWeight: 700, color: 'var(--teal-profundo)' }}>{fmt(parseFloat(item.precio) * item.cantidad)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div style={{ display: 'grid', gap: 6, marginTop: 12, padding: '12px 14px', background: 'var(--arena-crema)', borderRadius: 10 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--texto-secundario)' }}>
+                                <span>Costo de envío</span><span>{fmt(parseFloat(detalle.costo_envio))}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--texto-secundario)' }}>
+                                <span>Distancia</span><span>{parseFloat(detalle.distancia_km).toFixed(2)} km</span>
+                            </div>
+                            {parseFloat(detalle.total) > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: 'var(--teal-profundo)', marginTop: 4, fontSize: 15, borderTop: '1px solid var(--borde-suave)', paddingTop: 8 }}>
+                                    <span>Total</span><span>{fmt(parseFloat(detalle.total))}</span>
+                                </div>
+                            )}
+                        </div>
+                        {ACTIVOS.includes(detalle.estado) && (
+                            <button className="admin-button-secondary admin-button-danger" style={{ width: '100%', marginTop: 12 }}
+                                onClick={() => cancelarPedido(detalle)}>
+                                ❌ Cancelar este pedido
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Modal calificar */}
             {calificando && (
                 <div className="modal-overlay" onClick={() => setCalificando(null)}>
                     <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
@@ -428,7 +763,7 @@ function SeccionPedidos() {
                             <h3 style={{ color: 'var(--teal-oscuro)' }}>Calificar repartidor</h3>
                             <button className="modal-close-btn" onClick={() => setCalificando(null)}>✕</button>
                         </div>
-                        <p style={{ color: 'var(--texto-secundario)', fontSize: 14 }}>Pedido #{calificando.id} · {calificando.repartidor}</p>
+                        <p style={{ color: 'var(--texto-secundario)', fontSize: 14 }}>Pedido #{calificando.id}</p>
                         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                             {['BUENO', 'REGULAR', 'MALO'].map(t => (
                                 <button key={t} onClick={() => setCalForm(f => ({ ...f, tipo: t }))}
@@ -451,6 +786,7 @@ function SeccionPedidos() {
     );
 }
 
+// ── Sección Perfil ───────────────────────────────────────────────────────────
 function SeccionPerfil() {
     const [datos, setDatos] = useState(null);
     const [form, setForm] = useState({ telefono: '', nombre: '' });
@@ -459,8 +795,9 @@ function SeccionPerfil() {
 
     useEffect(() => {
         api.get(`/usuario/perfil?id=${usuario.id()}`).then(r => {
-            setDatos(r.data);
-            setForm({ telefono: r.data.telefono || '', nombre: r.data.nombre || '' });
+            const d = r.data?.usuario || r.data?.datos || r.data;
+            setDatos(d);
+            setForm({ telefono: d?.telefono || '', nombre: d?.nombre || '' });
         }).finally(() => setCargando(false));
     }, []);
 
@@ -473,18 +810,17 @@ function SeccionPerfil() {
                 latitud: null,
                 longitud: null
             });
-            setMsg('✅ Perfil actualizado');
-        } catch { setMsg('❌ Error al actualizar'); }
+            setMsg(' Perfil actualizado');
+        } catch { setMsg(' Error al actualizar'); }
     };
 
     if (cargando) return <p className="admin-loading">Cargando perfil...</p>;
 
     return (
         <div className="admin-page">
-            <h1 className="admin-title">👤 Mi Perfil</h1>
+            <h1 className="admin-title"> Mi Perfil</h1>
             <p className="admin-subtitle">Actualizá tu información personal</p>
             {msg && <div className={`admin-alert ${msg.startsWith('✅') ? 'admin-alert--success' : 'admin-alert--danger'}`} style={{ marginBottom: 16 }}>{msg}</div>}
-
             <div style={{ display: 'grid', gap: 16, maxWidth: 500 }}>
                 <div className="admin-card admin-card--section">
                     <h2 className="admin-card__title">Datos personales</h2>
@@ -510,7 +846,7 @@ function SeccionPerfil() {
     );
 }
 
-// ── Estilos extra ────────────────────────────────────────────────────────────
+
 const css = `
 .cliente-rest-grid {
     display: grid;
@@ -528,7 +864,7 @@ const css = `
 }
 .cliente-menu-layout {
     display: grid;
-    grid-template-columns: 1fr 320px;
+    grid-template-columns: 1fr 340px;
     gap: 20px;
     align-items: start;
 }

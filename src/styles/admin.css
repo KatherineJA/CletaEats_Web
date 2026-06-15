@@ -930,11 +930,7 @@
 }
 
 
-/* ═══════════════════════════════════════════════════════════
-   BREAKPOINTS RESPONSIVOS
-   ═══════════════════════════════════════════════════════════ */
 
-/* ── Tablet grande / laptop pequeño (< 1024px) ──────────── */
 @media (max-width: 1024px) {
   :root { --sidebar-width: 200px; }
 
@@ -943,7 +939,7 @@
   }
 }
 
-/* ── Tablet (< 768px): sidebar colapsado por defecto ───── */
+
 @media (max-width: 768px) {
   .admin-sidebar__toggle {
     display: flex;
@@ -959,7 +955,7 @@
     box-shadow: 4px 0 20px rgba(0,0,0,0.2);
   }
 
-  /* Sidebar visible (clase añadida por JS) */
+
   .admin-sidebar--open {
     transform: translateX(0);
   }
