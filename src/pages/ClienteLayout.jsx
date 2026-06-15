@@ -88,23 +88,24 @@ function SeccionRestaurantes({ onPedir }) {
     }, []);
 
     const seleccionarRestaurante = async (rest) => {
-        setRestauranteSeleccionado(rest);
-        setCarrito([]);
-        setMensaje('');
-        setCargando(true);
-        try {
-            const r = await api.get(`/combos?id_restaurante=${rest.id}`);
-            const lista = Array.isArray(r.data) ? r.data : r.data?.combos || [];
-            // Cargar opciones de cada combo
-            const conOpciones = await Promise.all(lista.map(async (c) => {
-                try {
-                    const op = await api.get(`/combo/opciones?id_combo=${c.id}`);
-                    return { ...c, opciones: op.data || [] };
-                } catch { return { ...c, opciones: [] }; }
-            }));
-            setCombos(conOpciones);
-        } finally { setCargando(false); }
-    };
+    setRestauranteSeleccionado(rest);
+    setCarrito([]);
+    setMensaje('');
+    setCargando(true);
+    try {
+        const r = await api.get(`/combos?id_restaurante=${rest.id}`);
+        const lista = Array.isArray(r.data?.combos) ? r.data.combos : [];
+        
+        // Usar /combo/detalle que devuelve opciones CON valores incluidos
+        const conOpciones = await Promise.all(lista.map(async (c) => {
+            try {
+                const op = await api.get(`/combo/detalle?id_combo=${c.id}`);
+                return { ...c, opciones: Array.isArray(op.data?.opciones) ? op.data.opciones : [] };
+            } catch { return { ...c, opciones: [] }; }
+        }));
+        setCombos(conOpciones);
+    } finally { setCargando(false); }
+};
 
     const abrirModalCombo = (combo) => {
         setModalCombo(combo);
