@@ -23,24 +23,24 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<Login />} />
-        <Route
-          path="/encargado"
-          element={
-            <ProtectedRoute roles={['ENCARGADO']}>
-              <EncargadoHome />
-            </ProtectedRoute>
-          }
-        />
+
+        <Route path="/encargado" element={
+          <ProtectedRoute roles={['ENCARGADO']}>
+            <EncargadoHome />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/cliente" element={
+          <ProtectedRoute roles={['CLIENTE']}>
+            <ClienteLayout />
+          </ProtectedRoute>
+        } />
+
         <Route path="/admin" element={
           <ProtectedRoute roles={['ADMIN']}>
             <AdminLayout />
           </ProtectedRoute>
         }>
-          <Route path="/cliente" element={
-          <ProtectedRoute roles={['CLIENTE']}>
-            <ClienteLayout />
-          </ProtectedRoute>
-        }></Route>
           <Route index element={<Dashboard />} />
           <Route path="clientes" element={<Clientes />} />
           <Route path="repartidores" element={<Repartidores />} />
@@ -48,10 +48,11 @@ function App() {
           <Route path="pedidos" element={<Pedidos />} />
           <Route path="restaurantes" element={<Restaurantes />} />
           <Route path="reportes" element={<Reportes />} />
-          
         </Route>
+
       </Routes>
     </Router>
   );
 }
+
 export default App;

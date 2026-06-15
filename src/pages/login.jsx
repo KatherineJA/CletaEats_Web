@@ -58,7 +58,7 @@ const Login = () => {
                 else if (rol === 'ENCARGADO') window.location.href = '/encargado';
                 else if (rol === 'CLIENTE') window.location.href = '/cliente';
                 else if (rol === 'REPARTIDOR') window.location.href = '/repartidor';
-                else setLoginError(`El rol ${rol} no tiene acceso al panel administrativo.`);
+               
             } else {
                 setLoginError(response.data.mensaje || 'Credenciales incorrectas');
             }
