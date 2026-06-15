@@ -150,36 +150,37 @@ function SeccionRestaurantes({ onPedir }) {
     const distancia = 2.5; // En producción vendría del mapa
     const costoEnvio = distancia * COSTO_KM;
 
-    const enviarPedido = async () => {
-        if (carrito.length === 0) return;
-        setEnviando(true);
-        setMensaje('');
-        try {
-            // Obtener ubicación del cliente
-            const pos = await new Promise((res, rej) =>
-                navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000 })
-            ).catch(() => ({ coords: { latitude: 9.9975, longitude: -84.1150 } }));
+   const enviarPedido = async () => {
+    if (carrito.length === 0) return;
+    setEnviando(true);
+    setMensaje('');
+    try {
+        const pos = await new Promise((res) =>
+            navigator.geolocation.getCurrentPosition(res, () => res({ coords: { latitude: 9.9975, longitude: -84.1150 } }), { timeout: 8000 })
+        );
 
-           const payload = {
+        const payload = {
             id_cliente: usuario.id(),
             id_restaurante: restauranteSeleccionado.id,
-            lat_restaurante: restauranteSeleccionado.latitud,
-            lon_restaurante: restauranteSeleccionado.longitud,
+            lat_restaurante: parseFloat(restauranteSeleccionado.latitud),
+            lon_restaurante: parseFloat(restauranteSeleccionado.longitud),
             lat_destino: pos.coords.latitude,
             lon_destino: pos.coords.longitude,
             items: carrito.map(i => ({
                 id_combo: i.combo.id,
                 cantidad: i.cantidad,
-                preferencias: i.preferencias
+                precio_unitario: parseFloat(i.combo.precio),
+                extras_costo: 0,
+                valores_opcion: i.preferencias
             }))
         };
-            await api.post('/pedido', payload);
-            setMensaje('✅ ¡Pedido enviado con éxito! Pronto un repartidor lo tomará.');
-            setCarrito([]);
-        } catch (e) {
-            setMensaje('❌ ' + (e.response?.data?.mensaje || 'Error al enviar el pedido'));
-        } finally { setEnviando(false); }
-    };
+        await api.post('/pedido', payload);
+        setMensaje('✅ ¡Pedido enviado con éxito! Pronto un repartidor lo tomará.');
+        setCarrito([]);
+    } catch (e) {
+        setMensaje('❌ ' + (e.response?.data?.mensaje || 'Error al enviar el pedido'));
+    } finally { setEnviando(false); }
+};
 
     const restaurantesFiltrados = restaurantes.filter(r =>
         r.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
