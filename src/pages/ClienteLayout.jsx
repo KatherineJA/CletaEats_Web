@@ -93,12 +93,12 @@ function SeccionRestaurantes({ onPedir }) {
         setMensaje('');
         setCargando(true);
         try {
-            const r = await api.get(`/combos/${rest.id}`);
+            const r = await api.get(`/combos?id_restaurante=${rest.id}`);
             const lista = Array.isArray(r.data) ? r.data : r.data?.combos || [];
             // Cargar opciones de cada combo
             const conOpciones = await Promise.all(lista.map(async (c) => {
                 try {
-                    const op = await api.get(`/combo/${c.id}/opciones`);
+                    const op = await api.get(`/combo/opciones?id_combo=${c.id}`);
                     return { ...c, opciones: op.data || [] };
                 } catch { return { ...c, opciones: [] }; }
             }));
@@ -159,19 +159,19 @@ function SeccionRestaurantes({ onPedir }) {
                 navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000 })
             ).catch(() => ({ coords: { latitude: 9.9975, longitude: -84.1150 } }));
 
-            const payload = {
-                id_cliente: usuario.id(),
-                id_restaurante: restauranteSeleccionado.id,
-                latitud_destino: pos.coords.latitude,
-                longitud_destino: pos.coords.longitude,
-                distancia_km: distancia,
-                costo_envio: costoEnvio,
-                items: carrito.map(i => ({
-                    id_combo: i.combo.id,
-                    cantidad: i.cantidad,
-                    preferencias: i.preferencias
-                }))
-            };
+           const payload = {
+            id_cliente: usuario.id(),
+            id_restaurante: restauranteSeleccionado.id,
+            lat_restaurante: restauranteSeleccionado.latitud,
+            lon_restaurante: restauranteSeleccionado.longitud,
+            lat_destino: pos.coords.latitude,
+            lon_destino: pos.coords.longitude,
+            items: carrito.map(i => ({
+                id_combo: i.combo.id,
+                cantidad: i.cantidad,
+                preferencias: i.preferencias
+            }))
+        };
             await api.post('/pedido', payload);
             setMensaje('✅ ¡Pedido enviado con éxito! Pronto un repartidor lo tomará.');
             setCarrito([]);
@@ -344,7 +344,6 @@ function SeccionRestaurantes({ onPedir }) {
     );
 }
 
-// ── Sección: Mis Pedidos ─────────────────────────────────────────────────────
 function SeccionPedidos() {
     const [pedidos, setPedidos] = useState([]);
     const [cargando, setCargando] = useState(true);
@@ -354,7 +353,7 @@ function SeccionPedidos() {
 
     const cargar = () => {
         setCargando(true);
-        api.get(`/pedidos/cliente/${usuario.id()}`).then(r => {
+        api.get(`/pedidos/cliente?id=${usuario.id()}`).then(r => {
             setPedidos(Array.isArray(r.data) ? r.data : r.data?.pedidos || []);
         }).finally(() => setCargando(false));
     };
@@ -405,8 +404,8 @@ function SeccionPedidos() {
                                 <span className={`admin-badge admin-badge--${estadoBadge(p.estado)}`}>{estadoLabel(p.estado)}</span>
                             </div>
                             <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: 13, color: 'var(--texto-secundario)', marginBottom: 10 }}>
-                                <span> {new Date(p.hora_creacion).toLocaleString('es-CR')}</span>
-                                <span> Envío: {fmt(p.costo_envio)}</span>
+                                <span>📅 {new Date(p.hora_creacion).toLocaleString('es-CR')}</span>
+                                <span>🚚 Envío: {fmt(p.costo_envio)}</span>
                                 {p.repartidor && <span>🚲 {p.repartidor}</span>}
                             </div>
                             {p.estado === 'ENTREGADO' && p.id_repartidor && (
@@ -450,16 +449,14 @@ function SeccionPedidos() {
     );
 }
 
-// ── Sección: Perfil ──────────────────────────────────────────────────────────
 function SeccionPerfil() {
     const [datos, setDatos] = useState(null);
     const [form, setForm] = useState({ telefono: '', nombre: '' });
-    const [pass, setPass] = useState({ actual: '', nueva: '' });
     const [msg, setMsg] = useState('');
     const [cargando, setCargando] = useState(true);
 
     useEffect(() => {
-        api.get(`/usuario/${usuario.id()}`).then(r => {
+        api.get(`/usuario/perfil?id=${usuario.id()}`).then(r => {
             setDatos(r.data);
             setForm({ telefono: r.data.telefono || '', nombre: r.data.nombre || '' });
         }).finally(() => setCargando(false));
@@ -468,18 +465,14 @@ function SeccionPerfil() {
     const guardarPerfil = async (e) => {
         e.preventDefault();
         try {
-            await api.put(`/usuario/${usuario.id()}/perfil`, form);
-            setMsg(' Perfil actualizado');
-        } catch { setMsg(' Error al actualizar'); }
-    };
-
-    const cambiarPass = async (e) => {
-        e.preventDefault();
-        try {
-            await api.put(`/usuario/${usuario.id()}/contrasena`, { contrasena_actual: pass.actual, nueva_contrasena: pass.nueva });
-            setMsg(' Contraseña cambiada');
-            setPass({ actual: '', nueva: '' });
-        } catch (err) { setMsg('❌ ' + (err.response?.data?.mensaje || 'Error')); }
+            await api.post('/usuario/perfil', {
+                id_usuario: usuario.id(),
+                telefono: form.telefono,
+                latitud: null,
+                longitud: null
+            });
+            setMsg('✅ Perfil actualizado');
+        } catch { setMsg('❌ Error al actualizar'); }
     };
 
     if (cargando) return <p className="admin-loading">Cargando perfil...</p>;
@@ -496,8 +489,7 @@ function SeccionPerfil() {
                     <form onSubmit={guardarPerfil} style={{ display: 'grid', gap: 12 }}>
                         <div>
                             <label className="admin-form-label">Nombre</label>
-                            <input className="admin-input" value={form.nombre}
-                                onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} />
+                            <input className="admin-input" value={form.nombre} disabled style={{ background: '#f5f5f5' }} />
                         </div>
                         <div>
                             <label className="admin-form-label">Teléfono</label>
@@ -509,23 +501,6 @@ function SeccionPerfil() {
                             <input className="admin-input" value={datos?.correo || ''} disabled style={{ background: '#f5f5f5' }} />
                         </div>
                         <button type="submit" className="admin-submit-button">Guardar cambios</button>
-                    </form>
-                </div>
-
-                <div className="admin-card admin-card--section">
-                    <h2 className="admin-card__title">Cambiar contraseña</h2>
-                    <form onSubmit={cambiarPass} style={{ display: 'grid', gap: 12 }}>
-                        <div>
-                            <label className="admin-form-label">Contraseña actual</label>
-                            <input className="admin-input" type="password" value={pass.actual}
-                                onChange={e => setPass(p => ({ ...p, actual: e.target.value }))} required />
-                        </div>
-                        <div>
-                            <label className="admin-form-label">Nueva contraseña</label>
-                            <input className="admin-input" type="password" value={pass.nueva}
-                                onChange={e => setPass(p => ({ ...p, nueva: e.target.value }))} required />
-                        </div>
-                        <button type="submit" className="admin-submit-button">Cambiar contraseña</button>
                     </form>
                 </div>
             </div>
