@@ -9,6 +9,7 @@ import Pedidos from './pages/admin/Pedidos';
 import Restaurantes from './pages/admin/Restaurantes';
 import Reportes from './pages/admin/Reportes';
 import EncargadoHome from './pages/encargado';
+import ClienteLayout from './pages/ClienteLayout';
 
 const ProtectedRoute = ({ children, roles }) => {
   const rol = localStorage.getItem('userRole');
@@ -35,6 +36,11 @@ function App() {
             <AdminLayout />
           </ProtectedRoute>
         }>
+          <Route path="/cliente" element={
+          <ProtectedRoute roles={['CLIENTE']}>
+            <ClienteLayout />
+          </ProtectedRoute>
+        }></Route>
           <Route index element={<Dashboard />} />
           <Route path="clientes" element={<Clientes />} />
           <Route path="repartidores" element={<Repartidores />} />
@@ -42,6 +48,7 @@ function App() {
           <Route path="pedidos" element={<Pedidos />} />
           <Route path="restaurantes" element={<Restaurantes />} />
           <Route path="reportes" element={<Reportes />} />
+          
         </Route>
       </Routes>
     </Router>
