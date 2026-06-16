@@ -72,7 +72,7 @@ export default function EncargadoHome() {
     console.log("DEBUG LOCALSTORAGE - idRestaurante recuperado:", idRestaurante);
   }, [idRestaurante]);
 
-  // ── Estado principal ──────────────────────────────────────────────────────
+  // ── Estado de combos ──────────────────────────────────────────────────────
   const [combos,         setCombos]         = useState([]);
   const [loadingCombos,  setLoadingCombos]  = useState(true);
   const [comboModal, setComboModal] = useState(null);
@@ -83,7 +83,13 @@ export default function EncargadoHome() {
   const [comboOptionTemplateIds, setComboOptionTemplateIds] = useState([]);
   const [feedback,       setFeedback]       = useState({ type: '', message: '' });
   const [submitting,     setSubmitting]     = useState(false);
-  
+
+  // ── Estado del perfil del restaurante ────────────────────────────────────
+  const [restaurante, setRestaurante] = useState(null);
+  const [editRestForm, setEditRestForm] = useState({ nombre: '', direccion: '', tipo_comida: '' });
+  const [restImageFile, setRestImageFile] = useState(null);
+  const [restImagePreview, setRestImagePreview] = useState('');
+  const [submittingRest, setSubmittingRest] = useState(false);
 
   const showFeedback = (type, message) => {
     setFeedback({ type, message });
@@ -122,9 +128,31 @@ export default function EncargadoHome() {
     }
   }, [idRestaurante]);
 
+  // ── Cargar datos del restaurante desde el backend ─────────────────────────
+  const cargarRestaurante = useCallback(async () => {
+    if (!idRestaurante) return;
+    try {
+      const { data } = await api.get('/restaurantes/menu', {
+        params: { id: idRestaurante },
+      });
+      if (data.exito && data.restaurante) {
+        setRestaurante(data.restaurante);
+        setEditRestForm({
+          nombre: data.restaurante.nombre || '',
+          direccion: data.restaurante.direccion || '',
+          tipo_comida: data.restaurante.tipo_comida || '',
+        });
+        setRestImagePreview(data.restaurante.imagen || '');
+      }
+    } catch (err) {
+      console.error('Error cargando restaurante:', err);
+    }
+  }, [idRestaurante]);
+
   useEffect(() => {
     cargarCombos();
-  }, [cargarCombos]);
+    cargarRestaurante();
+  }, [cargarCombos, cargarRestaurante]);
 
   // Métricas
   const totalCombos    = combos.length;
@@ -134,7 +162,7 @@ export default function EncargadoHome() {
     ? combos.reduce((sum, c) => sum + Number(c.precio || 0), 0) / totalCombos
     : 0;
 
-  // ── Formulario ────────────────────────────────────────────────────────────
+  // ── Formulario de combo ───────────────────────────────────────────────────
   const resetComboForm = () => {
     setEditingComboId(null);
     setComboForm(buildComboForm());
@@ -244,7 +272,6 @@ export default function EncargadoHome() {
     event.preventDefault();
 
     const nombreCombo = comboForm.nombre.trim();
-    const descripcion = comboForm.descripcion.trim();
 
     if (!nombreCombo || !comboForm.precio.trim()) {
       showFeedback('danger', 'Completá al menos el nombre y el precio del combo.');
@@ -259,9 +286,9 @@ export default function EncargadoHome() {
 
     setSubmitting(true);
     try {
-      const esEdicion = editingComboId !== null && 
-                        editingComboId !== undefined && 
-                        String(editingComboId).trim() !== '' && 
+      const esEdicion = editingComboId !== null &&
+                        editingComboId !== undefined &&
+                        String(editingComboId).trim() !== '' &&
                         String(editingComboId) !== 'null';
       const payload = buildComboPayload();
 
@@ -347,6 +374,54 @@ export default function EncargadoHome() {
     }
   };
 
+  // ── Actualizar perfil del restaurante ─────────────────────────────────────
+  const handleRestImageChange = (event) => {
+    const file = event.target.files?.[0] ?? null;
+
+    if (restImagePreview && restImagePreview.startsWith('blob:')) {
+      URL.revokeObjectURL(restImagePreview);
+    }
+
+    setRestImageFile(file);
+    setRestImagePreview(file ? URL.createObjectURL(file) : restImagePreview);
+  };
+
+  const handleSubmitRestaurante = async (event) => {
+    event.preventDefault();
+
+    if (!editRestForm.nombre.trim()) {
+      showFeedback('danger', 'El nombre del restaurante es requerido.');
+      return;
+    }
+
+    setSubmittingRest(true);
+    try {
+      const formData = new FormData();
+      formData.append('id_restaurante', idRestaurante);
+      formData.append('nombre', editRestForm.nombre.trim());
+      formData.append('direccion', editRestForm.direccion.trim());
+      formData.append('tipo_comida', editRestForm.tipo_comida.trim());
+      if (restImageFile) formData.append('imagen', restImageFile);
+
+      const { data } = await api.post('/restaurante/actualizar', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      if (data.exito) {
+        showFeedback('success', 'Restaurante actualizado correctamente.');
+        setRestImageFile(null);
+        cargarRestaurante();
+      } else {
+        showFeedback('danger', data.mensaje || 'No se pudo actualizar.');
+      }
+    } catch (err) {
+      console.error('Error actualizando restaurante:', err);
+      showFeedback('danger', 'Error de conexión al actualizar el restaurante.');
+    } finally {
+      setSubmittingRest(false);
+    }
+  };
+
   return (
     <div className="admin-page encargado-page" style={{ padding: '1rem', minHeight: '100vh', background: 'var(--arena-crema)' }}>
       {/* Hero */}
@@ -364,6 +439,70 @@ export default function EncargadoHome() {
             Cerrar sesión
           </button>
         </div>
+      </div>
+
+      {/* Perfil del restaurante */}
+      <div className="admin-card admin-card--section" style={{ marginBottom: '1rem' }}>
+        <div className="encargado-panel__head">
+          <div>
+            <h2 className="admin-card__title">Mi restaurante</h2>
+            <p className="admin-helper">Editá los datos y la imagen de tu local.</p>
+          </div>
+          {restImagePreview && (
+            <img
+              src={restImagePreview}
+              alt="Imagen del restaurante"
+              style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 12 }}
+            />
+          )}
+        </div>
+
+        <form className="admin-form" onSubmit={handleSubmitRestaurante}>
+          <div className="admin-form-grid">
+            <div>
+              <label className="admin-form-label" htmlFor="rest-nombre">Nombre *</label>
+              <input
+                id="rest-nombre"
+                className="admin-input"
+                value={editRestForm.nombre}
+                onChange={(e) => setEditRestForm((p) => ({ ...p, nombre: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="admin-form-label" htmlFor="rest-tipo">Tipo de comida</label>
+              <input
+                id="rest-tipo"
+                className="admin-input"
+                value={editRestForm.tipo_comida}
+                onChange={(e) => setEditRestForm((p) => ({ ...p, tipo_comida: e.target.value }))}
+              />
+            </div>
+            <div style={{ gridColumn: 'span 2' }}>
+              <label className="admin-form-label" htmlFor="rest-direccion">Dirección</label>
+              <input
+                id="rest-direccion"
+                className="admin-input"
+                value={editRestForm.direccion}
+                onChange={(e) => setEditRestForm((p) => ({ ...p, direccion: e.target.value }))}
+              />
+            </div>
+            <div style={{ gridColumn: 'span 2' }}>
+              <label className="admin-form-label" htmlFor="rest-imagen">Imagen del restaurante</label>
+              <input
+                id="rest-imagen"
+                className="admin-input"
+                type="file"
+                accept="image/*"
+                onChange={handleRestImageChange}
+              />
+            </div>
+          </div>
+          <div className="admin-form-actions">
+            <button type="submit" className="admin-submit-button" disabled={submittingRest}>
+              {submittingRest ? 'Guardando…' : 'Guardar cambios'}
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Métricas */}
